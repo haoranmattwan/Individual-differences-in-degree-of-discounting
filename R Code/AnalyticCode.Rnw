@@ -1,0 +1,265 @@
+\documentclass[fleqn,11pt]{article}
+\setlength\parindent{0pt}
+\usepackage{fullpage}
+\usepackage{dcolumn}
+\usepackage{fixltx2e}
+\usepackage{amsmath}
+\usepackage{scrextend}
+\usepackage[sc]{mathpazo}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{verbose,tmargin=2.5cm,bmargin=2.5cm,lmargin=2.5cm,rmargin=2.5cm}
+\setcounter{secnumdepth}{5}
+\setcounter{tocdepth}{5}
+\usepackage{url}
+\usepackage[unicode=true,pdfusetitle,
+            bookmarks=true,bookmarksnumbered=true,bookmarksopen=true,bookmarksopenlevel=2,
+            breaklinks=false,pdfborder={0 0 1},backref=false,colorlinks=false]
+{hyperref}
+\hypersetup{
+  pdfstartview={XYZ null null 1}}
+\usepackage{breakurl}
+\usepackage{amsfonts}
+\usepackage[dvips]{epsfig}
+\usepackage{algorithm2e}
+\usepackage{verbatim}
+\usepackage{mathtools}
+\usepackage{scrextend}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{IEEEtrantools}
+\graphicspath{ {images/} }
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\usepackage{setspace}
+\setstretch{1.15}
+
+\begin{document}
+\title{Age-Related Differences in Discounting Depend on Income \\ Result}
+\author{Matt Wan}
+\date{\today}
+\maketitle
+
+\section{Preliminaries}
+
+\subsection{Clear the Console Panes}
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+options(replace.assign=TRUE,width=65, digits=4,scipen=4,fig.width=4,fig.height=4)
+# Clear the workspace and console.
+rm(list = ls(all.names = TRUE)) 
+cat("\014")
+how_long <- Sys.time()
+set.seed(01222023)
+library(knitr)
+@
+
+\subsection{Packages}
+<<message=FALSE>>=
+library(psych)
+library(ltm)
+library(readr)
+library(tidyr)
+library(minpack.lm)
+library(MuMIn)
+library(janitor)
+library(data.table)
+library(tidyverse)
+library(corrr)
+library(bayestestR)
+library(posterior)
+library(ggpubr)
+library(apaTables)
+library(ggdist)
+library(lmtest)
+library(betareg)
+library(emmeans)
+library(merTools)
+library(StepBeta)
+library(multcomp)
+library(modelr)
+library(scales)
+library(lemon)
+library(broom)
+library(ggpattern)
+library(fastDummies)
+library(glmmTMB)
+library(here)
+@
+
+\subsection{Get the Data}
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+# Get the data from the working directory.
+setwd(here("r code"))
+source("Data.R")
+source("Function.R")
+@
+
+\clearpage
+
+\section{Group-Level Analyses}
+
+\textbf{\large{\textit{
+The following analyses were conducted to establish the representativeness of the current discounting data:  For each discounting procedure (Adj-Amt and MCQ), we examined whether the results reflected the systematic changes in preference usually observed as the amount of reward and/or the delay to a reward increase.
+}}}
+
+\subsection{Adjusting-Amount}
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+# Hyperboloid Model Fit
+r2_aa_grp <- matrix(NA, nrow = 3, ncol = 2) |>
+  `colnames<-` (c("Prolific", "MTurk")) |>
+  `rownames<-` (c("$30", "$80", "$500")) 
+for (x in 1:3) {
+  r2_aa_grp[x,1] <- rsquare(nlsLM(med_sv ~ 1 / (1 + exp(k) * iv)^(b), 
+                                  data = subset(disc_grp_df, amt == x & procedure == "aa" & provider == "Prolific"), 
+                                  start = list(k = -4, b = 1), control = list(maxiter = 1000)), 
+                            data = subset(disc_grp_df, amt == x & procedure == "aa" & provider == "Prolific"))
+  r2_aa_grp[x,2] <- rsquare(nlsLM(med_sv ~ 1 / (1 + exp(k) * iv)^(b), 
+                                  data = subset(disc_grp_df, amt == x & procedure == "aa" & provider == "MTurk"), 
+                                  start = list(k = -4, b = 1), control = list(maxiter = 1000)), 
+                            data = subset(disc_grp_df, amt == x & procedure == "aa" & provider == "MTurk"))
+}
+print(r2_aa_grp, digits = 3)
+# Amount Effect
+group_by(filter(behav, procedure == "aa"), provider) |>
+  summarise(pvalue = tidy(summary(glht(glmmTMB(atheoretical ~ -1 + as.factor(amt) + (1 | id), family = beta_family()), 
+                                      linfct = matrix(c(-1,0,1), nc = 3), alternative = "two.sided", rhs = 0)))[[6]][[1]]) 
+@
+
+\subsection{MCQ}
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+# Logistic Growth Model Fit
+r2_mcq_grp <- matrix(NA, nrow = 3, ncol = 2) |>
+  `colnames<-` (c("Prolific", "MTurk")) |>
+  `rownames<-` (c("$30", "$55", "$80")) 
+for (x in 1:3) {
+  r2_mcq_grp[x,1] <- rsquare(nlsLM(mean_sv ~ 1 / (1 + exp( - ( iv - (x) ) * (r) ) ), 
+                                   data = subset(disc_grp_df, amt == x & procedure == "mcq" & provider == "Prolific"),
+                                   start = list(x = -4, r = 1), control = list(maxiter = 1000)), 
+                             data = subset(disc_grp_df, amt == x & procedure == "mcq" & provider == "Prolific"))
+  r2_mcq_grp[x,2] <- rsquare(nlsLM(mean_sv ~ 1 / (1 + exp( - ( iv - (x) ) * (r) ) ), 
+                                   data = subset(disc_grp_df, amt == x & procedure == "mcq" & provider == "MTurk"),
+                                   start = list(x = -4, r = 1), control = list(maxiter = 1000)), 
+                             data = subset(disc_grp_df, amt == x & procedure == "mcq" & provider == "MTurk"))
+}
+print(r2_mcq_grp, digits = 3)
+# Amount Effect
+group_by(filter(behav, procedure == "mcq"), provider) |>
+      summarise(pvalue = tidy(summary(glht(glmer(cbind(atheoretical, 9 - atheoretical) ~ -1 + as.factor(amt) + (1 | id), family = binomial()), linfct = matrix(c(contr.poly(3)[,1]), nc = 3), alternative = "two.sided", rhs = 0)))[[6]][[1]])
+@
+
+\subsection{Within-Procedure Correlation}
+
+\textbf{\large{\textit{
+The following analyses were conducted to evaluate the correlations among Amounts within each discounting procedure. \newline
+\newlinw
+cor1\_2 represents the correlation between small and medium amounts.  \newline
+cor1\_3 represents the correlation between small and large amounts.  \newline
+cor2\_3 represents the correlation between medium and large amounts.  \newline
+\newline
+It should be noted that the log k was calculated using Stan in the published article, so there might be minor differences in p-values between the following outputs and the ones in the published article. }}}
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+# Correlation within each discounting measure from each procedure
+behav %>% 
+  pivot_longer(names_to = "measure", values_to = "value", cols = c(atheoretical,theoretical)) %>%
+  mutate(amt = ifelse(amt == 1, "small", ifelse(amt == 2, "medium", "large"))) %>%
+  pivot_wider(names_from = amt, values_from = value) %>%
+  group_by(measure, procedure, provider) %>%
+  summarise(cor1_2 = cor(small,medium),cor1_3 = cor(small,large),cor2_3 = cor(medium,large)) 
+# Correlation between discounting measures (theoretical and atheoretical) from each procedure
+behav %>%
+  group_by(provider, procedure, amt) %>%
+  summarise(cor = cor(atheoretical,theoretical)) %>%
+  mutate(amt = ifelse(amt == 1, "small", ifelse(amt == 2, "medium", "large"))) %>%
+  pivot_wider(names_from = amt, values_from = cor)
+@
+
+\subsection{Between-Procedure Correlation}
+
+\textbf{\large{\textit{
+The following analyses were conducted to evaluate the intercorrelations among Amounts and the two discounting procedures. \newline
+\newline
+cor\_atheoretical represents the correlation between AuC (Adj-Amt) and delayed-choice proportion (MCQ).  \newline
+cor\_theoretical represents the correlation between log k measures from both procedures.  \newline
+\newline
+It should be noted that the log k was calculated using Stan in the published article, so there might be minor differences in p-values between the following outputs and the ones in the published article. 
+}}}
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+filter(behav, (procedure == "aa"  & amt != 3) | (procedure == "mcq"  & amt != 2)) |>
+  mutate(amt = ifelse(amt == 1, "$30", "$80")) |>
+  pivot_wider(names_from = procedure,values_from = c(atheoretical, theoretical)) |>
+  group_by(provider,amt) |> 
+  summarise(cor_atheoretical = cor(atheoretical_aa,atheoretical_mcq),
+            cor_theoretical = cor(theoretical_aa,theoretical_mcq))
+@
+
+\clearpage
+
+\section{log k Comparison}
+
+\textbf{\large{\textit{
+The following analyses were conducted to compare the absolute degree of discounting between the two discounting procedure using log k based on simple hyperbolic model. \newline
+\newline
+It should be noted that the log k was calculated using Stan in the published article, so there might be minor differences in p-values between the following outputs and the ones in the published article.  
+}}}
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+tem_dat <- filter(behav, (procedure == "aa"  & amt != 3) | (procedure == "mcq"  & amt != 2)) |>
+  mutate(amt = ifelse(amt == 1, "$30", "$80"))
+logk_mod <- aov(theoretical ~ (provider+amt+procedure)^2, data = tem_dat)
+summary(logk_mod)
+# Contrast
+AmtProcedure_emm <- emmeans(logk_mod, c("amt", "procedure"))
+AmtProvider_emm <- emmeans(logk_mod, c("amt", "provider"))
+ProcedureProvider_emm <- emmeans(logk_mod, c("procedure", "provider"))
+cld(AmtProcedure_emm, alpha = .05,adjust="holm",details=TRUE)
+cld(AmtProvider_emm, alpha = .05,adjust="holm",details=TRUE)
+cld(ProcedureProvider_emm, alpha = .05,adjust="holm",details=TRUE)
+@
+
+\clearpage
+
+\section{Comparsion of Choice Patterns}
+
+\subsection{Steep Discounter}
+
+\textbf{\large{\textit{
+The following analyses were conducted to evaluate the number of participants who were steep discounter in each procedure.  
+}}}
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+group_by(behav, provider,procedure,id)[,-11] |> summarise_all(mean) |>
+  pivot_wider(names_from = procedure,values_from = atheoretical) |>
+  mutate(mcq = mcq*3,
+         # AuC < .125 in the Adj-Amt
+         auc_im = ifelse(aa < .125, 1, 0),
+         # Delayed-choice proportion in the MCQ
+         prop_im = ifelse(mcq <=3, 1, 0),
+         # Steep discounter in both procedures
+         im = ifelse(auc_im == 1 & prop_im == 1, 1, 0)) |>
+  group_by(provider) |>
+  # Calculate the number & proportion of steep discounter for each procedure
+  summarise(AdjAmt_pr = sum(auc_im)/n(), AdjAmt_n = sum(auc_im), # Steep discounter in Adj-Amt 
+            MCQ_pr = sum(prop_im)/n(), MCQ_n = sum(prop_im),     # Steep discounter in MCQ 
+            Common_pr = sum(im)/n(),  Common_n = sum(im))        # Steep discounter in both procedures
+@
+
+\clearpage
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+# Get system details.
+S <- benchmarkme::get_sys_details()
+GB <- memuse::Sys.meminfo()
+@
+\textbf{\large{\textit{
+The current machine uses the following CPU: \Sexpr{S$cpu$model_name}, with \Sexpr{S$cpu$no_of_cores} cores and \Sexpr{GB$totalram} of RAM. 
+}}}
+
+<<tidy=TRUE,message=FALSE,warning=FALSE>>=
+sessionInfo()
+Sys.time()-how_long 
+@
+\end{document}
